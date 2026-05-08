@@ -2,6 +2,9 @@ import streamlit as st
 import re
 from PIL import Image
 import pandas as pd
+import os
+import urllib.request
+from fpdf import FPDF
 
 # -----------------------------------------------------
 # ૧. પેજનું સેટિંગ
@@ -9,19 +12,32 @@ import pandas as pd
 st.set_page_config(page_title="UCDC Visnagar - TAT Mains Checking", page_icon="🎓", layout="centered")
 
 # -----------------------------------------------------
-# ૨. તમારી API Key અને મોડેલ (સિક્યોર કરેલ)
+# ૨. ઓટોમેટિક ગુજરાતી ફોન્ટ ડાઉનલોડ (PDF માટે)
+# -----------------------------------------------------
+FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosansgujarati/NotoSansGujarati-Regular.ttf"
+FONT_PATH = "NotoSansGujarati-Regular.ttf"
+
+@st.cache_resource
+def download_font():
+    if not os.path.exists(FONT_PATH):
+        try:
+            urllib.request.urlretrieve(FONT_URL, FONT_PATH)
+        except:
+            pass
+download_font()
+
+# -----------------------------------------------------
+# ૩. તમારી API Key અને મોડેલ
 # -----------------------------------------------------
 from google import genai
 from google.genai import types
 
-# તમારી કી હવે છુપાવી દેવામાં આવી છે. 
-# Streamlit માં Settings -> Secrets માં જઈને GEMINI_API_KEY = "તમારી_કી" નાખી દેવું.
 API_KEY = st.secrets["GEMINI_API_KEY"] 
 client = genai.Client(api_key=API_KEY)
 BEST_MODEL = "gemini-flash-latest" 
 
 # -----------------------------------------------------
-# ૩. ગૂગલ શીટમાંથી કોલમ મુજબ પ્રશ્નો લાવવાનું સેટિંગ
+# ૪. ગૂગલ શીટમાંથી પ્રશ્નો
 # -----------------------------------------------------
 GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSdEfCcM_cugFgMBsSlnsV_Lx1azdZgtNNivsApg1KWbFaE_24iMLFYvbkC8HMBg0xuKdsfbj6VxDZa/pub?output=csv" 
 
@@ -34,41 +50,33 @@ def load_questions(url):
         "સંક્ષેપીકરણ": ["૧. સંક્ષેપીકરણ ફકરો - ૧", "મારો પોતાનો પ્રશ્ન (Custom)"],
         "વ્યાકરણ (૨૦ ગુણ)": ["૧. વ્યાકરણ સેટ - ૧", "મારો પોતાનો પ્રશ્ન (Custom)"]
     }
-    
-    if not url or url == "તમારી_પબ્લિશ_કરેલી_CSV_લિંક_અહીં_નાખો":
-        return fallback_questions
-        
     try:
         df = pd.read_csv(url)
         q_dict = {}
         for col in df.columns:
             cat = str(col).strip()
-            # ખાલી રો કાઢી નાખવી અને પ્રશ્નોને લિસ્ટમાં લેવા
             questions = df[col].dropna().astype(str).str.strip().tolist()
             questions = [q for q in questions if q and q.lower() != 'nan']
-            
-            # પ્રશ્નોની આગળ નંબર ઉમેરવા (૧, ૨, ૩...)
             numbered_questions = []
             for i, q in enumerate(questions):
                 if q != "મારો પોતાનો પ્રશ્ન (Custom)":
                     numbered_questions.append(f"{i+1}. {q}")
                 else:
                     numbered_questions.append(q)
-            
             q_dict[cat] = numbered_questions
-            
         for cat in q_dict:
             if "મારો પોતાનો પ્રશ્ન (Custom)" not in q_dict[cat]:
                 q_dict[cat].append("મારો પોતાનો પ્રશ્ન (Custom)")
         return q_dict
-    except Exception:
+    except:
         return fallback_questions
 
 questions_dict = load_questions(GOOGLE_SHEET_CSV_URL)
 
 # -----------------------------------------------------
-# ૪. રિફ્રેશ એરર અને ડિઝાઇન
+# ૫. સ્ટેટ મેનેજમેન્ટ (રિઝલ્ટ સાચવવા)
 # -----------------------------------------------------
+if 'checking_result' not in st.session_state: st.session_state['checking_result'] = None
 if 'logged_in' not in st.session_state:
     if st.query_params.get('logged_in') == 'true':
         st.session_state['logged_in'] = True
@@ -92,7 +100,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------
-# ૫. લૉગિન અને પોર્ટલ
+# ૬. PDF બનાવવાનું ફંક્શન
+# -----------------------------------------------------
+def create_pdf(text, student_name):
+    # ઇમોજી અને અમુક નિશાનો કાઢવા જેથી PDF માં એરર ના આવે
+    clean_text = text.replace('✅', '[+]').replace('❌', '[-]').replace('🎓', '').replace('⚠️', '!')
+    
+    pdf = FPDF()
+    pdf.add_page()
+    try:
+        # જો ડાઉનલોડ થયેલો ફોન્ટ મળે તો તેનો ઉપયોગ કરવો
+        pdf.add_font("Gujarati", style="", fname=FONT_PATH, uni=True)
+        pdf.set_font("Gujarati", size=12)
+    except:
+        pdf.set_font("Arial", size=12)
+    
+    # PDF માં ટાઇટલ ઉમેરવું
+    pdf.cell(200, 10, txt="UCDC Visnagar - TAT Mains Result", ln=True, align='C')
+    pdf.cell(200, 10, txt=f"Student Name: {student_name}", ln=True, align='C')
+    pdf.cell(200, 10, txt="-"*50, ln=True, align='C')
+    pdf.ln(5)
+    
+    # રિઝલ્ટ પ્રિન્ટ કરવું
+    pdf.multi_cell(0, 8, txt=clean_text)
+    return bytes(pdf.output())
+
+# -----------------------------------------------------
+# ૭. લૉગિન અને પોર્ટલ લેઆઉટ
 # -----------------------------------------------------
 if not st.session_state['logged_in']:
     try: st.image("Seminar Uma Academy.jpg", use_container_width=True)
@@ -131,21 +165,18 @@ else:
     with col3: 
         student_mobile = st.text_input("મોબાઈલ નંબર:", value=st.session_state['mobile_no'], disabled=True)
 
-    # પ્રશ્ન પસંદગી
     st.markdown("### 📝 પ્રશ્ન પસંદ કરો")
     category = st.selectbox("વિભાગ:", list(questions_dict.keys()))
     selected_display = st.selectbox("વિષય/પ્રશ્ન પસંદ કરો:", questions_dict[category])
     
     if selected_display != "મારો પોતાનો પ્રશ્ન (Custom)":
         actual_q = re.sub(r'^\d+\. ', '', selected_display)
-        st.markdown("##### 🔍 પસંદ કરેલ પ્રશ્નનું લખાણ:")
         st.markdown(f"<div class='question-box'>{actual_q}</div>", unsafe_allow_html=True)
         final_question_to_check = actual_q
     else:
         custom_q = st.text_area("તમારો પોતાનો પ્રશ્ન અહીં ટાઈપ કરો:")
         final_question_to_check = custom_q
 
-    # અપલોડ
     st.markdown("### 📁 જવાબવહી અપલોડ કરો")
     uploaded_files = st.file_uploader("PDF અથવા ફોટા પસંદ કરો", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
 
@@ -158,19 +189,17 @@ else:
         else:
             with st.spinner("⏳ ચેકિંગ ચાલુ છે..."):
                 try:
-                    # ૧૦ કે ૨૦ માર્કનું ઓટોમેટિક સેટિંગ
                     total_marks = 20 if category in ["નિબંધ લેખન", "વ્યાકરણ (૨૦ ગુણ)"] else 10
-
                     prompt = f"""
                     તમે માઁ ઉમા એકેડમી & UCDC વિસનગરના અત્યંત કડક અને અનુભવી નિષ્ણાત છો. 
                     વિદ્યાર્થીએ '{category}' વિભાગમાં '{final_question_to_check}' વિષય પર જવાબ લખ્યો છે.
                     
                     તમારો જવાબ હંમેશા: "જય માઁ ઉમાખોડલ અને જય સરદાર જય પાટીદાર" થી જ શરૂ કરો.
 
-                    ૧. જો પ્રશ્ન અંગ્રેજી લિપિમાં (Gujlish) હોય તો તેનો ગુજરાતી અર્થ કાઢી ચેક કરવું.
-                    ૨. જો અપલોડ કરેલ લખાણ '{final_question_to_check}' થી અલગ હોય તો સીધા ૦ (શૂન્ય) ગુણ આપવા.
+                    ૧. જો પ્રશ્ન અંગ્રેજી લિપિમાં હોય તો તેનો ગુજરાતી અર્થ કાઢી ચેક કરવું.
+                    ૨. જો અપલોડ કરેલ લખાણ અલગ હોય તો સીધા ૦ ગુણ આપવા.
 
-                    🎓 TAT 2026: ગુજરાતી વર્ણનાત્મક પેપર - મૂલ્યાંકન માળખું (આ નિયમોનું કડક પાલન કરવું):
+                    🎓 TAT 2026: ગુજરાતી વર્ણનાત્મક પેપર - મૂલ્યાંકન માળખું (કડક પાલન કરવું):
                     આ પ્રશ્ન કુલ {total_marks} ગુણનો છે.
                     
                     ⚠️ અત્યંત કડક સૂચના (STRICT MARKING POLICY) ⚠️
@@ -180,35 +209,30 @@ else:
                     - જો '{category}' 'સંક્ષેપીકરણ' હોય: તો ૧૦ માંથી મહત્તમ ૫ ગુણ જ આપવા.
                     - (માત્ર વ્યાકરણમાં જ નિયમ મુજબ પૂરા માર્ક્સ આપી શકાય).
 
-                    ૧. નિબંધ લેખન (કુલ ગુણ: ૨૦) - આશરે ૨૫૦ થી ૩૦૦ શબ્દો
+                    ૧. નિબંધ લેખન (કુલ ગુણ: ૨૦)
                     ✅ હકારાત્મક ગુણ: પ્રસ્તાવના/ઉપસંહાર (૦૪), વિષયવસ્તુ/ઊંડાણ (૦૮), મૌલિકતા/તાર્કિક પ્રવાહ (૦૪), ભાષાકીય શુદ્ધિ (૦૪).
                     ❌ નકારાત્મક ગુણ: વિષયાંતર (-૩ થી -૫), મૌલિકતાનો અભાવ (-૨), શબ્દમર્યાદા ભંગ (-૧ થી -૨), જોડણી/વ્યાકરણ (દર ૩ ભૂલે -૦.૫).
 
-                    ૨. ચર્ચાપત્ર (કુલ ગુણ: ૧૦) - આશરે ૨૦૦ શબ્દો
+                    ૨. ચર્ચાપત્ર (કુલ ગુણ: ૧૦) 
                     ✅ હકારાત્મક ગુણ: માળખું/ફોર્મેટ (૦૨), તટસ્થ રજૂઆત (૦૩), મૌલિક/રચનાત્મક સૂચનો (૦૩), ભાષાશૈલી (૦૨).
                     ❌ નકારાત્મક ગુણ: ફોર્મેટની ભૂલ (-૧ પ્રત્યેક), અંગત/ઉગ્ર ભાષા (-૧.૫), જોડણી/વ્યાકરણ (દર ૩ ભૂલે -૦.૫).
 
-                    ૩. પત્ર લેખન (કુલ ગુણ: ૧૦) - આશરે ૧૫૦ થી ૨૦૦ શબ્દો
+                    ૩. પત્ર લેખન (કુલ ગુણ: ૧૦) 
                     ✅ હકારાત્મક ગુણ: માળખું/ઔપચારિકતા (૦૩), વિષયવસ્તુની સચોટતા (૦૪), સત્તાવાર શબ્દાવલિ (૦૩).
                     ❌ નકારાત્મક ગુણ: માળખાકીય ભૂલો (-૧ પ્રત્યેક), અસ્પષ્ટતા (-૨), બિનઔપચારિક ભાષા (-૧).
 
-                    ૪. સંક્ષેપીકરણ (કુલ ગુણ: ૧૦) - આપેલા ફકરાનો ૧/૩ ભાગ
+                    ૪. સંક્ષેપીકરણ (કુલ ગુણ: ૧૦) 
                     ✅ હકારાત્મક ગુણ: યોગ્ય શીર્ષક (૦૨), મૂળ વિચારની જાળવણી (૦૩), મૌલિકતા (૦૩), લંબાઈ/શુદ્ધિ (૦૨).
                     ❌ નકારાત્મક ગુણ: શીર્ષકનો અભાવ (-૨), કોપી-પેસ્ટ (-૨ થી -૩), અર્થનો અનર્થ (-૧.૫), બિનજરૂરી લંબાણ (-૧).
 
                     ૫. વ્યાકરણ (૨૦ ગુણ) - ૨૦ પ્રશ્નો. (સાચાનો ૧ ગુણ, ખોટાનો ૦).
 
                     તમારો જવાબ નીચેના ૫ (પાંચ) વિભાગમાં જ આપવો:
-
-                    ### **૧. અંદાજિત શબ્દ સંખ્યા (Word Count):** (વ્યાકરણ હોય તો 'લાગુ પડતું નથી' લખવું. TAT ના નિયમ મુજબ લંબાઈ અને મૌલિકતા કેટલી છે તે સ્પષ્ટ જણાવવું).
-
-                    ### **૨. ક્યાં માર્કસ કપાયા તેનું વિશ્લેષણ:** (નકારાત્મક ગુણના નિયમો મુજબ ક્યાં માર્ક કાપ્યા તે સમજાવવું).
-
-                    ### **૩. વિભાગવાર માર્કિંગ (કુલ {total_marks} માંથી):** (માત્ર ટેબલ બનાવવું: ક્રમ | મૂલ્યાંકન પાસું | મેળવેલ ગુણ. ફાળવેલ ગુણ બતાવવા નહીં).
-
-                    ### **૪. ભૂલોનું લિસ્ટ (ખાસ ધ્યાન આપવું):** (જોડણી/વ્યાકરણની ભૂલોનું લિસ્ટ આપવું. દર ૩ ભૂલે ૦.૫ ગુણ કાપવા).
-
-                    ### **૫. નિષ્ણાતની સલાહ (સુધારા માટે માર્ગદર્શન અને પૂરા માર્ક મેળવવા માટે):** (અહીં વિદ્યાર્થીને સ્પષ્ટ કહો કે તેણે જવાબમાં કયા કયા અગત્યના ટોપિક/મુદ્દાઓ લખવાના હતા જે તેનાથી છૂટી ગયા છે. અને સૌથી અગત્યનું: આ મુદ્દાઓ વાંચવા માટે તેણે કયા સોર્સ (જેમ કે GCERT ની બુક્સ, ગુજરાત પાક્ષિક, ભાષા નિયામકની બુક કે શિક્ષણ જગત) નો સંદર્ભ લેવો જોઈએ તેનું સ્પષ્ટ માર્ગદર્શન આપો.)
+                    ### **૧. અંદાજિત શબ્દ સંખ્યા (Word Count)**
+                    ### **૨. ક્યાં માર્કસ કપાયા તેનું વિશ્લેષણ**
+                    ### **૩. વિભાગવાર માર્કિંગ (કુલ {total_marks} માંથી)** (માત્ર ટેબલ બનાવવું)
+                    ### **૪. ભૂલોનું લિસ્ટ** (જોડણી/વ્યાકરણની ભૂલોનું લિસ્ટ આપવું. દર ૩ ભૂલે ૦.૫ ગુણ કાપવા)
+                    ### **૫. નિષ્ણાતની સલાહ** (કયા મુદ્દા છૂટી ગયા અને કયા સોર્સ વાંચવા)
                     """
                     
                     contents = [prompt]
@@ -220,10 +244,26 @@ else:
                     
                     response = client.models.generate_content(model=BEST_MODEL, contents=contents, config=types.GenerateContentConfig(temperature=0.0))
                     
-                    st.success("✅ ચેકિંગ પૂર્ણ!")
-                    st.balloons()
-                    st.markdown("---")
-                    st.markdown(response.text)
-                    st.download_button("📥 રિઝલ્ટ ડાઉનલોડ કરો", data=response.text.encode('utf-8'), file_name=f"Result_{student_name}.txt", mime="text/plain")
+                    st.session_state['checking_result'] = response.text
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ ભૂલ: {e}")
+
+    # રિઝલ્ટ અને ડાઉનલોડ બટન
+    if st.session_state['checking_result']:
+        st.success("✅ ચેકિંગ પૂર્ણ!")
+        st.balloons()
+        st.markdown("---")
+        st.markdown(st.session_state['checking_result'])
+        
+        # PDF ડાઉનલોડ બટન
+        try:
+            pdf_bytes = create_pdf(st.session_state['checking_result'], student_name)
+            st.download_button(
+                label="📥 રિઝલ્ટ PDF માં ડાઉનલોડ કરો",
+                data=pdf_bytes,
+                file_name=f"Result_{student_name}.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error("PDF બનાવવામાં નાની ટેકનિકલ ભૂલ આવી છે, પણ તમારું રિઝલ્ટ ઉપર તૈયાર છે.")
