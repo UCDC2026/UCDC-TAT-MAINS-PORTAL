@@ -2,26 +2,11 @@ import streamlit as st
 import re
 from PIL import Image
 import pandas as pd
-import os
-import urllib.request
-from fpdf import FPDF
 
 # -----------------------------------------------------
-# ૧. પેજ અને ફોન્ટ સેટિંગ
+# ૧. પેજ સેટિંગ
 # -----------------------------------------------------
 st.set_page_config(page_title="UCDC Visnagar - TAT Mains Checking", page_icon="🎓", layout="centered")
-
-FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosansgujarati/NotoSansGujarati-Regular.ttf"
-FONT_PATH = "NotoSansGujarati-Regular.ttf"
-
-@st.cache_resource
-def download_font():
-    if not os.path.exists(FONT_PATH):
-        try:
-            urllib.request.urlretrieve(FONT_URL, FONT_PATH)
-        except:
-            pass
-download_font()
 
 # -----------------------------------------------------
 # ૨. API Key અને મોડેલ
@@ -77,20 +62,27 @@ if 'logged_in' not in st.session_state:
 st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=Mukta+Vaani:wght@400;600;700;800&display=swap'); * { font-family: 'Mukta Vaani', sans-serif !important; } .tat-title { color: #000080; text-align: center; font-size: 30px; font-weight: 800; } .question-box { background-color: #f0f2f6; border-left: 5px solid #000080; padding: 15px; border-radius: 5px; font-size: 18px; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
 
 # -----------------------------------------------------
-# ૫. PDF બનાવવાનું ફંક્શન
+# ૫. HTML રિપોર્ટ બનાવવાનું ફંક્શન (PDF ના બદલે બેસ્ટ ઓપ્શન)
 # -----------------------------------------------------
-def create_pdf(text, student_name):
-    # ચિન્હો સાફ કરવા
-    clean_text = text.replace('✅', '[+]').replace('❌', '[-]').replace('🎓', '').replace('⚠️', '!')
-    pdf = FPDF()
-    pdf.add_page()
-    if os.path.exists(FONT_PATH):
-        pdf.add_font("Gujarati", style="", fname=FONT_PATH, uni=True)
-        pdf.set_font("Gujarati", size=11)
-    else: pdf.set_font("Arial", size=11)
-    
-    pdf.multi_cell(0, 10, txt=f"UCDC Visnagar - TAT Mains Result\nStudent: {student_name}\n{'-'*40}\n\n{clean_text}")
-    return pdf.output()
+def create_html_report(text, student_name):
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>UCDC Result - {student_name}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; color: #000; background-color: #fff; }}
+            h2 {{ color: #000080; text-align: center; border-bottom: 2px solid #000080; padding-bottom: 10px; margin-bottom: 20px; }}
+            .content {{ white-space: pre-wrap; font-size: 16px; }}
+        </style>
+    </head>
+    <body>
+        <h2>UCDC Visnagar - TAT Mains Result<br><small style="color: #555; font-size: 18px;">Student: {student_name}</small></h2>
+        <div class="content">{text}</div>
+    </body>
+    </html>
+    """
+    return html_content.encode('utf-8')
 
 # -----------------------------------------------------
 # ૬. પોર્ટલ લોજિક
@@ -126,34 +118,47 @@ else:
     uploaded_files = st.file_uploader("PDF અથવા ફોટા પસંદ કરો", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
 
     if st.button("પેપર ચેક કરો 🚀"):
-        if not student_name or "PATEL" not in student_name.upper():
+        has_patel = "PATEL" in student_name.upper()
+        if not student_name or not has_patel:
             st.error("❌ આ પોર્ટલ માત્ર 'પાટીદાર' વિદ્યાર્થીઓ માટે છે.")
         elif not uploaded_files:
             st.warning("⚠️ ફાઈલ અપલોડ કરો.")
         else:
-            with st.spinner("⏳ ચેકિંગ ચાલુ છે..."):
+            with st.spinner("⏳ પેપરનું ડીપ ચેકિંગ ચાલુ છે..."):
                 try:
                     total_marks = 20 if category in ["નિબંધ લેખન", "વ્યાકરણ (૨૦ ગુણ)"] else 10
-                    # નવી શરતો સાથેનો પ્રોમ્પ્ટ
+                    # નવી અત્યંત સચોટ અને કડક સૂચનાઓ
                     prompt = f"""
-                    તમે માઁ ઉમા એકેડમી & UCDC વિસનગરના અનુભવી નિષ્ણાત છો. 
+                    તમે માઁ ઉમા એકેડમી & UCDC વિસનગરના અત્યંત હોશિયાર અને સચોટ પેપર ચેકર છો. 
                     વિદ્યાર્થીએ '{category}' વિભાગમાં '{final_question_to_check}' વિષય પર જવાબ લખ્યો છે.
                     
-                    તમારો જવાબ હંમેશા: "જય માઁ ઉમાખોડલ અને જય સરદાર જય પાટીદાર" થી જ શરૂ કરો. ત્યારબાદ આ લીટી લખો: "માઁ ઉમા એકેડમી & UCDC વિસનગરના નિષ્ણાત તરીકે તમારા પત્રનું મૂલ્યાંકન નીચે મુજબ છે:"
+                    તમારો જવાબ હંમેશા: "જય માઁ ઉમાખોડલ અને જય સરદાર જય પાટીદાર" થી જ શરૂ કરો. ત્યારબાદ માત્ર આ લીટી લખો: "તમારા જવાબનું મૂલ્યાંકન નીચે મુજબ છે:"
 
-                    ⚠️ અત્યંત કડક માર્કિંગ સૂચના (આંતરિક ઉપયોગ માટે):
-                    - વિદ્યાર્થી ગમે તેટલું સારું લખે, નિબંધમાં ૨૦ માંથી મહત્તમ ૧૨-૧૩, પત્ર/ચર્ચાપત્રમાં ૧૦ માંથી મહત્તમ ૬, અને સંક્ષેપીકરણમાં મહત્તમ ૫ ગુણ જ આપવા. આ મર્યાદા વિશે વિદ્યાર્થીને લખાણમાં ક્યાંય જણાવવું નહીં.
+                    ⚠️ આંતરિક માર્કિંગ નિયમો (વિદ્યાર્થીને જણાવવા નહીં):
+                    - નિબંધમાં ૨૦ માંથી મહત્તમ ૧૨-૧૩ ગુણ જ આપવા.
+                    - પત્ર/ચર્ચાપત્રમાં ૧૦ માંથી મહત્તમ ૬ ગુણ જ આપવા.
+                    - સંક્ષેપીકરણમાં ૧૦ માંથી મહત્તમ ૫ ગુણ જ આપવા.
+                    - ચેકિંગ લાઈન-બાય-લાઈન, અત્યંત સચોટ અને ડીપમાં કરવું. એક પણ ભૂલ છૂટવી ના જોઈએ. 
 
-                    📏 શબ્દ મર્યાદા અને ઓળખ (STRICT):
-                    ૧. પત્ર લેખન: જો વિદ્યાર્થીએ પત્રમાં પોતાનું સાચું નામ, મોબાઈલ નંબર કે સાચું સરનામું (જેમ કે 'સરનામું-૧', 'સરનામું-૨') લખ્યું હોય, તો ઓળખ જાહેર કરવા બદલ સીધા ૨ માર્ક કાપવા. તેની જગ્યાએ 'અ.બ.ક.' કે 'ક્ષ.ય.જ.' હોવું જોઈએ.
-                    ૨. શબ્દ સંખ્યા: તમારે ચોકસાઈથી શબ્દો ગણવા. જો શબ્દ મર્યાદા (નિબંધ ૩૦૦, પત્ર ૨૦૦, ચર્ચાપત્ર ૨૦૦) કરતા ૧૦% થી વધુ વધ-ઘટ હોય તો માર્ક કાપવા.
+                    📏 સરનામું અને ઓળખનો નિયમ (ખાસ ધ્યાન આપવું):
+                    - પત્ર લેખન કે ચર્ચાપત્રમાં જો વિદ્યાર્થીએ 'સરનામું-૧', 'સરનામું-૨', 'અ.બ.ક.', 'ક્ષ.ય.જ.', કે 'ક.ખ.ગ.' જેવી કાલ્પનિક વિગતો લખી હોય તો તે GPSC/TAT ના નિયમ મુજબ એકદમ સાચું છે! આના માટે કોઈ માર્ક કાપવા નહીં.
+                    - માર્ક ત્યારે જ કાપવા જો વિદ્યાર્થીએ પોતાનું સાચું નામ, સાચો મોબાઈલ નંબર કે સાચા ગામ/શહેરનું નામ ભૂલથી લખી દીધું હોય.
 
-                    મૂલ્યાંકન વિભાગો:
-                    ### ૧. અંદાજિત શબ્દ સંખ્યા (Word Count): (અહીં ચોક્કસ આંકડો આપો અને જણાવો કે તે વિષયને અનુરૂપ છે કે નહીં).
-                    ### ૨. ક્યાં માર્કસ કપાયા તેનું વિશ્લેષણ: (જોડણી, શબ્દમર્યાદા ભંગ કે ઓળખ જાહેર કરવા બદલ કપાયેલ માર્ક અહીં સમજાવો).
-                    ### ૩. વિભાગવાર માર્કિંગ (કુલ {total_marks} માંથી): (ટેબલ બનાવો).
-                    ### ૪. ભૂલોનું લિસ્ટ: (જોડણીની ભૂલો આપો).
-                    ### ૫. નિષ્ણાતની સલાહ: (સુધારા માટે માર્ગદર્શન).
+                    મૂલ્યાંકન નીચેના ૫ વિભાગમાં જ આપવું:
+                    ### ૧. અંદાજિત શબ્દ સંખ્યા (Word Count): 
+                    (અહીં ચોક્કસ શબ્દો ગણીને આંકડો આપો. અને જણાવો કે આ વિષય અને પ્રશ્નની માંગ મુજબ શબ્દમર્યાદા બરાબર જળવાયેલી છે કે નહીં. જો લખાણ બહુ ટૂંકું કે બહુ લાંબુ હોય તો જ માર્ક કાપવા.)
+
+                    ### ૨. ક્યાં માર્કસ કપાયા તેનું વિશ્લેષણ: 
+                    (અહીં ડીપમાં સમજાવો કે વિદ્યાર્થીની રજૂઆત, માળખું કે ભાષામાં ક્યાં કચાશ રહી ગઈ છે જેના કારણે માર્ક કપાયા છે.)
+
+                    ### ૩. વિભાગવાર માર્કિંગ (કુલ {total_marks} માંથી): 
+                    (અહીં એક સુંદર ટેબલ બનાવો: ક્રમ | મૂલ્યાંકન પાસું | મેળવેલ ગુણ).
+
+                    ### ૪. ભૂલોનું લિસ્ટ (સચોટ ચેકિંગ): 
+                    (લખાણમાં રહેલી તમામ જોડણીની ભૂલો, વાક્યરચનાની ભૂલો અને વિરામચિહ્નોની ભૂલો અહીં લિસ્ટ સ્વરૂપે દર્શાવો. એક પણ ભૂલ છૂટવી ના જોઈએ).
+
+                    ### ૫. વિસ્તૃત સલાહ અને માર્ગદર્શન: 
+                    (આ વિભાગ સૌથી મહત્વનો છે. અહીં વિદ્યાર્થીને અત્યંત વિસ્તૃત અને મુદ્દાસર માર્ગદર્શન આપો. તેને સમજાવો કે આ જવાબને વધુ શ્રેષ્ઠ બનાવવા માટે કયા નવા મુદ્દાઓ ઉમેરી શકાય, કયા ઉદાહરણો મૂકી શકાય અને હવે પછી તેને કયા પુસ્તકો કે સોર્સ વાંચવા જોઈએ).
                     """
                     contents = [prompt]
                     for file in uploaded_files:
@@ -165,11 +170,17 @@ else:
                     st.rerun()
                 except Exception as e: st.error(f"❌ ભૂલ: {e}")
 
+    # રિઝલ્ટ અને ડાઉનલોડ બટન
     if st.session_state['checking_result']:
         st.success("✅ ચેકિંગ પૂર્ણ!")
         st.markdown("---")
         st.markdown(st.session_state['checking_result'])
-        try:
-            pdf_data = create_pdf(st.session_state['checking_result'], student_name)
-            st.download_button(label="📥 રિઝલ્ટ PDF ડાઉનલોડ કરો", data=pdf_data, file_name=f"Result_{student_name}.pdf", mime="application/pdf")
-        except: st.warning("PDF જનરેટ કરવામાં મુશ્કેલી છે, પણ તમે ઉપરથી રિઝલ્ટ કોપી કરી શકો છો.")
+        
+        # HTML રિપોર્ટ ડાઉનલોડ બટન
+        report_data = create_html_report(st.session_state['checking_result'], student_name)
+        st.download_button(
+            label="📥 રિઝલ્ટ ડાઉનલોડ કરો",
+            data=report_data,
+            file_name=f"Result_{student_name}.html",
+            mime="text/html"
+        )
