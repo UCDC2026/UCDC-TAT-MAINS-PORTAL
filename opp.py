@@ -48,21 +48,23 @@ def load_questions(url):
 questions_dict = load_questions(GOOGLE_SHEET_CSV_URL)
 
 # -----------------------------------------------------
-# ૪. સ્ટેટ મેનેજમેન્ટ
+# ૪. સ્ટેટ મેનેજમેન્ટ (મોબાઈલ નંબર અને ડેટા સેવ રાખવા માટે)
 # -----------------------------------------------------
 if 'checking_result' not in st.session_state: st.session_state['checking_result'] = None
+if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
 if 'mobile_no' not in st.session_state: st.session_state['mobile_no'] = ""
 if 'user_name' not in st.session_state: st.session_state['user_name'] = ""
 if 'user_village' not in st.session_state: st.session_state['user_village'] = ""
 
-if 'logged_in' not in st.session_state:
-    if st.query_params.get('logged_in') == 'true':
-        st.session_state['logged_in'] = True
-        st.session_state['mobile_no'] = st.query_params.get('mobile', '')
-        st.session_state['user_name'] = st.query_params.get('name', '')
-        st.session_state['user_village'] = st.query_params.get('village', '')
-    else: 
-        st.session_state['logged_in'] = False
+# URL માંથી ડેટા પાછો લાવવા માટે (જ્યારે પેજ રિફ્રેશ થાય)
+if st.query_params.get('logged_in') == 'true':
+    st.session_state['logged_in'] = True
+    if st.query_params.get('mobile'):
+        st.session_state['mobile_no'] = st.query_params.get('mobile')
+    if st.query_params.get('name'):
+        st.session_state['user_name'] = st.query_params.get('name')
+    if st.query_params.get('village'):
+        st.session_state['user_village'] = st.query_params.get('village')
 
 st.markdown("""<style>@import url('https://fonts.googleapis.com/css2?family=Mukta+Vaani:wght@400;600;700;800&display=swap'); * { font-family: 'Mukta Vaani', sans-serif !important; } .tat-title { color: #000080; text-align: center; font-size: 30px; font-weight: 800; } .question-box { background-color: #f0f2f6; border-left: 5px solid #000080; padding: 15px; border-radius: 5px; font-size: 18px; margin-bottom: 20px; }</style>""", unsafe_allow_html=True)
 
@@ -98,22 +100,32 @@ if not st.session_state['logged_in']:
     st.markdown("<div class='tat-title'>🔐 વિદ્યાર્થી લૉગિન</div>", unsafe_allow_html=True)
     mobile_id = st.text_input("લૉગિન ID (૧૦ અંક):", max_chars=10)
     password = st.text_input("પાસવર્ડ:", type="password")
+    
     if st.button("લૉગિન કરો"):
         if len(mobile_id) == 10:
             st.session_state['logged_in'] = True
             st.session_state['mobile_no'] = mobile_id
+            # URL માં પેરામીટર્સ સેટ કરો જેથી રિફ્રેશ થવા પર ડેટા રહે
             st.query_params['logged_in'] = 'true'
-            st.query_params['mobile'] = mobile_id 
+            st.query_params['mobile'] = mobile_id
             st.rerun()
+        else:
+            st.error("કૃપા કરીને ૧૦ આંકડાનો સાચો મોબાઈલ નંબર દાખલ કરો.")
 else:
     try: st.image("Seminar Uma Academy.jpg", use_container_width=True)
     except: pass
     st.markdown("<div class='tat-title'>UCDC વિસનગર - TAT પેપર ચેકિંગ</div>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
-    with col1: student_name = st.text_input("પૂરું નામ (English):", value=st.session_state['user_name'])
-    with col2: student_village = st.text_input("ગામ/શહેર:", value=st.session_state['user_village'])
-    with col3: student_mobile = st.text_input("મોબાઈલ નંબર:", value=st.session_state['mobile_no'], disabled=True)
+    with col1: 
+        st.session_state['user_name'] = st.text_input("પૂરું નામ (English):", value=st.session_state['user_name'])
+        st.query_params['name'] = st.session_state['user_name']
+    with col2: 
+        st.session_state['user_village'] = st.text_input("ગામ/શહેર:", value=st.session_state['user_village'])
+        st.query_params['village'] = st.session_state['user_village']
+    with col3: 
+        # અહીં મોબાઈલ નંબર ઓટોમેટિક આવી જશે અને ડીસેબલ રહેશે
+        st.text_input("મોબાઈલ નંબર:", value=st.session_state['mobile_no'], disabled=True)
 
     category = st.selectbox("વિભાગ:", list(questions_dict.keys()))
     selected_display = st.selectbox("વિષય/પ્રશ્ન પસંદ કરો:", questions_dict[category])
@@ -124,8 +136,8 @@ else:
     uploaded_files = st.file_uploader("PDF અથવા ફોટા પસંદ કરો (આખું પેપર હોય તો બધી ફાઈલો સિલેક્ટ કરો)", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
 
     if st.button("પેપર ચેક કરો 🚀"):
-        has_patel = "PATEL" in student_name.upper()
-        if not student_name or not has_patel:
+        has_patel = "PATEL" in st.session_state['user_name'].upper()
+        if not st.session_state['user_name'] or not has_patel:
             st.error("❌ આ પોર્ટલ માત્ર 'પાટીદાર' વિદ્યાર્થીઓ માટે છે.")
         elif not uploaded_files:
             st.warning("⚠️ ફાઈલ અપલોડ કરો.")
@@ -243,10 +255,10 @@ else:
         st.markdown(st.session_state['checking_result'])
         
         # HTML રિપોર્ટ ડાઉનલોડ બટન
-        report_data = create_html_report(st.session_state['checking_result'], student_name)
+        report_data = create_html_report(st.session_state['checking_result'], st.session_state['user_name'])
         st.download_button(
             label="📥 રિઝલ્ટ ડાઉનલોડ કરો",
             data=report_data,
-            file_name=f"Result_{student_name}.html",
+            file_name=f"Result_{st.session_state['user_name']}.html",
             mime="text/html"
         )
