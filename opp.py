@@ -13,7 +13,7 @@ API_KEY = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=API_KEY)
 
 # 404 એરર સોલ્વ કરવા માટે ગૂગલનું સાચું લેટેસ્ટ પ્રો મોડેલ
-BEST_MODEL = "gemini-1.5-flash-latest" 
+BEST_MODEL = "gemini-flash-latest" 
 
 # -----------------------------------------------------
 # ૨. CSS અને ડિઝાઇન
