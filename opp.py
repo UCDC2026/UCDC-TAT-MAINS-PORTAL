@@ -11,7 +11,7 @@ st.set_page_config(page_title="UCDC Visnagar - TAT Mains Checker", page_icon="�
 
 API_KEY = st.secrets["GEMINI_API_KEY"] 
 client = genai.Client(api_key=API_KEY)
-BEST_MODEL = "gemini-1.5-flash-latest" 
+BEST_MODEL = "gemini-flash-latest" 
 
 # -----------------------------------------------------
 # ૨. સ્ટેટ મેનેજમેન્ટ (રિઝલ્ટ ગાયબ ન થાય તે માટે)
