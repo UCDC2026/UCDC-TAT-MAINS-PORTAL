@@ -14,7 +14,7 @@ API_KEY = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=API_KEY)
 
 # મોડેલનું લેટેસ્ટ અને ફાસ્ટ નામ
-BEST_MODEL = "gemini-flash-latest" 
+BEST_MODEL = "gemini-1.5-flash-latest" 
 
 # -----------------------------------------------------
 # ૨. CSS અને ડિઝાઇન
@@ -28,7 +28,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------
-# ૩. મેઈન પોર્ટલ
+# ૩. HTML રિપોર્ટ બનાવવાનું ફંક્શન (ડાઉનલોડ માટે)
+# -----------------------------------------------------
+def create_html_report(text):
+    html_content = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>UCDC Result</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; color: #000; background-color: #fff; }}
+            h2 {{ color: #000080; text-align: center; border-bottom: 2px solid #000080; padding-bottom: 10px; margin-bottom: 20px; }}
+            .content {{ white-space: pre-wrap; font-size: 16px; }}
+        </style>
+    </head>
+    <body>
+        <h2>UCDC Visnagar - TAT Mains Result</h2>
+        <div class="content">{text}</div>
+    </body>
+    </html>
+    """
+    return html_content.encode('utf-8')
+
+# -----------------------------------------------------
+# ૪. મેઈન પોર્ટલ
 # -----------------------------------------------------
 try: 
     st.image("Seminar Uma Academy.jpg", use_container_width=True)
@@ -137,6 +160,15 @@ if st.button("પેપર ચેક કરો 🚀"):
                 st.success("✅ ચેકિંગ પૂર્ણ!")
                 st.markdown("---")
                 st.markdown(response.text)
+                
+                # --- ડાઉનલોડ બટન ---
+                report_data = create_html_report(response.text)
+                st.download_button(
+                    label="📥 રિઝલ્ટ ડાઉનલોડ કરો",
+                    data=report_data,
+                    file_name="TAT_Mains_Result.html",
+                    mime="text/html"
+                )
 
             except Exception as e: 
                 st.error(f"❌ ભૂલ: {e}")
